@@ -9,7 +9,7 @@
   <!-- App properties -->
   <properties>
     <java.version>11</java.version>
-    <flink.version>1.17.2</flink.version>
+    <flink.version>1.16.3</flink.version>
   </properties>
 
   <!-- App dependencies that use the above app properties -->
@@ -42,6 +42,18 @@
       <artifactId>flink-clients</artifactId>
       <version>${flink.version}</version>
     </dependency>
+    <!-- Clickhouse JDBC -->
+    <dependency>
+      <groupId>com.clickhouse</groupId>
+      <artifactId>clickhouse-jdbc</artifactId>
+      <version>0.4.6</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.flink</groupId>
+      <artifactId>flink-connector-jdbc</artifactId>
+      <version>${flink.version}</version>
+    </dependency>
+
 
   </dependencies>
 

@@ -1,8 +1,14 @@
-# Data Engineering Pipeline
+# OLAP Pipeline for Bitcoin Kline Data
 
-This project outlines a test pipeline to read live trade data from Binance WebSocket into a Kafka MQ, and process this stream of data using Apache Flink.
+This project outlines a test pipeline to read live trade data from Binance WebSocket into a Kafka MQ, and process this stream of data using Apache Flink, storing 1 minute windowed aggregated data into ClickHouse, a columnar database.
 
 ## Setup
+
+Java 11 support
+
+```sh
+java -version  # should now show Java 11
+```
 
 Start docker services for Zookeeper and Kafka
 
@@ -46,3 +52,45 @@ Expected logs:
 - 10> means subtask 10 of the parallel operator instance printed that log.
   - Flink assigns subtasks (small independent workers) to run parts of the operator logic in parallel.
   - If the operator has a parallelism of 12, you’ll see log lines from subtasks 0>, 1>, ..., 11>.
+
+ClickHouse setup
+
+```sh
+docker exec -it clickhouse clickhouse-client --password default
+```
+
+First time setup
+
+```sh
+-- Create database if it doesn't exist
+CREATE DATABASE IF NOT EXISTS trades;
+
+-- Use the database
+USE trades;
+
+-- Create the kline_agg table
+CREATE TABLE kline_agg (
+    symbol String,
+    window_start DateTime,
+    avg_close Float64
+) ENGINE = MergeTree()
+ORDER BY (symbol, window_start);
+```
+
+Query
+
+```sql
+select * from trades.kline_agg
+```
+
+Result
+
+```sh
+Query id: c6241df8-91aa-4ddb-8e88-10c35c6add6a
+   ┌─symbol─┬────────window_start─┬────────────avg_close─┐
+1. │ BNBBTC │ 2025-07-13 15:08:00 │ 0.005817222222222223 │
+2. │ BNBBTC │ 2025-07-13 15:09:00 │             0.005813 │
+3. │ BNBBTC │ 2025-07-13 15:07:00 │ 0.005818750000000001 │
+   └────────┴─────────────────────┴──────────────────────┘
+   3 rows in set. Elapsed: 0.004 sec.
+```
