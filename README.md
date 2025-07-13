@@ -42,3 +42,7 @@ Expected logs:
 10> {"result":null,"id":1}
 11> {"e":"kline","E":1752397290016,"s":"BNBBTC","k":{"t":1752397260000,"T":1752397319999,"s":"BNBBTC","i":"1m","f":273280640,"L":273280663,"o":"0.00585100","c":"0.00585000","h":"0.00585100","l":"0.00584900","v":"5.68800000","n":24,"x":false,"q":"0.03327391","V":"1.25900000","Q":"0.00736515","B":"0"}}
 ```
+
+- 10> means subtask 10 of the parallel operator instance printed that log.
+  - Flink assigns subtasks (small independent workers) to run parts of the operator logic in parallel.
+  - If the operator has a parallelism of 12, you’ll see log lines from subtasks 0>, 1>, ..., 11>.

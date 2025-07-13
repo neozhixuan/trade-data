@@ -1,1 +1,5 @@
+main\java\neozhixuan\flinkproject\pojo\KlineEvent.class
+main\java\neozhixuan\flinkproject\pojo\TradeKline.class
+main\java\neozhixuan\flinkproject\BinanceKafkaConsumerJob$1.class
 main\java\neozhixuan\flinkproject\BinanceKafkaConsumerJob.class
+main\java\neozhixuan\flinkproject\pojo\KlineEvent$KlineData.class
