@@ -2,6 +2,9 @@
 
 This project outlines a test pipeline to read live trade data from Binance WebSocket into a Kafka MQ, and process this stream of data using Apache Flink, storing 1 minute windowed aggregated data into ClickHouse, a columnar database.
 
+<img width="1241" height="682" alt="image" src="https://github.com/user-attachments/assets/0bc9b335-39b8-45c3-af51-4b6ea7a24009" />
+
+
 ## Setup
 
 Java 11 support
