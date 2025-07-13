@@ -5,7 +5,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	kafkawriter "trade-data/kafkaWriter"
 	"trade-data/websocketClient"
+
+	"github.com/segmentio/kafka-go"
 )
 
 const (
@@ -13,6 +16,14 @@ const (
 	binanceHost       = "stream.binance.com:9443"
 	binancePath       = "/ws/bnbbtc@trade"
 	tradeChannelLimit = 100
+
+	kafkaTopic    = "binance.kline"
+	kafkaTopicKey = "bnbbtc"
+)
+
+var (
+	kafkaBrokers  = []string{"localhost:9092"}
+	kafkaBalancer = &kafka.LeastBytes{}
 )
 
 func main() {
@@ -43,6 +54,17 @@ func main() {
 
 	// Read websocket messages in a separate goroutine
 	go websocketClient.ReadMessages(wssClient, tradeInfoChannel)
+
+	// Create Kafka writer
+	kafkaWriter := kafkawriter.NewKafkaWriter()
+	kafkaWriterInstance := kafka.NewWriter(kafka.WriterConfig{
+		Brokers:  kafkaBrokers,
+		Topic:    kafkaTopic,
+		Balancer: kafkaBalancer,
+	})
+	defer kafkaWriterInstance.Close()
+
+	go kafkaWriter.WriteMessageFromStream(kafkaWriterInstance, tradeInfoChannel, kafkaTopicKey)
 
 	// Wait for interrupt signal (program exited) to gracefully shutdown and call all close functions
 	sigChan := make(chan os.Signal, 1)

@@ -9,7 +9,6 @@ import (
 
 // websocketClient struct definition
 type websocketClient struct {
-	// Add fields if needed, e.g. API keys, config, etc.
 }
 
 // NewWebsocketClient is a constructor for websocketClient
@@ -57,7 +56,8 @@ func (c *websocketClient) SubscribeToStream(conn *websocket.Conn, streamNames []
 	return nil
 }
 
-func (c *websocketClient) ReadMessages(conn *websocket.Conn, tradeInfoChannel chan<- string) {
+func (c *websocketClient) ReadMessages(conn *websocket.Conn, tradeInfoChannel chan<- string) { // NOTE: chan<- string defines a send-only channel
+	// Infinite loop until "return"/"break" is called
 	for {
 		// Message type, message, error
 		_, message, err := conn.ReadMessage()
