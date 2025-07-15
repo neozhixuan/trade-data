@@ -4,6 +4,10 @@ This project outlines a test pipeline to read live trade data from Binance WebSo
 
 <img width="1241" height="682" alt="image" src="https://github.com/user-attachments/assets/0bc9b335-39b8-45c3-af51-4b6ea7a24009" />
 
+Flink Windowed Aggregation
+
+<img width="887" height="563" alt="image" src="https://github.com/user-attachments/assets/fa94940f-92de-4488-98c5-b82b56d21ec2" />
+
 
 ## Setup
 
