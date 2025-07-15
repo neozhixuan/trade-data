@@ -1,13 +1,12 @@
 package main.java.neozhixuan.flinkproject.pojo;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import main.java.neozhixuan.flinkproject.pojo.KlineEvent.KlineData;
 
+// Allow fields that are empty/not present in the JSON to be ignored
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class KlineEvent {
+public class KlineEvent extends BaseEvent {
 
-  public String e; // event type
-  public long E; // event time
-  public String s; // symbol
   public KlineData k;
 
   public static class KlineData {

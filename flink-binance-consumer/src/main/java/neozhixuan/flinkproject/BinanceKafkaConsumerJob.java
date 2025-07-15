@@ -29,7 +29,7 @@ public class BinanceKafkaConsumerJob {
 
   public static void main(String[] args) throws Exception {
     // Start a Flink execution environment
-    final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+    final StreamExecutionEnvironment streamEnv = StreamExecutionEnvironment.getExecutionEnvironment();
 
     // Set up Kafka consumer properties
     Properties props = new Properties();
@@ -46,41 +46,58 @@ public class BinanceKafkaConsumerJob {
     // Start reading from the latest messages
     consumer.setStartFromLatest();
 
+    DataStream<String> consumeKafkaStream = streamEnv.addSource(consumer);
+
     // Use Jackson library to parse JSON messages
     ObjectMapper mapper = new ObjectMapper();
-
-    DataStream<String> tradeStream = env.addSource(consumer);
-
     // Parse stream messages into KlineEvent objects
-    DataStream<KlineEvent> klineStream = tradeStream
+    DataStream<KlineEvent> klineStream = consumeKafkaStream
       .filter(jsonStr -> jsonStr.contains("\"e\":\"kline\""))
       .map(jsonStr -> mapper.readValue(jsonStr, KlineEvent.class))
       .returns(KlineEvent.class);
 
-    // Parase KlineEvent into TradeKline
+    // Parse KlineEvent into TradeKline
     DataStream<TradeKline> tradeKlines = klineStream
       .map(TradeKline::from)
       .returns(TradeKline.class);
 
-    // Print incoming data
-    tradeKlines.print("Parsed TradeKline");
+    // Parse trade messages into
+    DataStream<KlineEvent> tradeStream = consumeKafkaStream
+      .filter(jsonStr -> jsonStr.contains("\"e\":\"trade\""))
+      .map(jsonStr -> mapper.readValue(jsonStr, KlineEvent.class))
+      .returns(KlineEvent.class);
 
-    // Windowed average using AggregateFunction
+    // Print incoming data
+    tradeKlines.print("Parsed KlineEvent to TradeKline");
+    tradeStream.print("Parsed TradeEvent");
+
+    // Windowed average of the close price from incoming TradeKline events
+    // - grouped by symbol (BNBBTC)
+    // - event time tumbling windows of 1 minute
     DataStream<KlineAgg> aggregated = tradeKlines
+      // Tells Flink how to extract event time and generate watermarks
       .assignTimestampsAndWatermarks(
         WatermarkStrategy
-          .<TradeKline>forMonotonousTimestamps()
-          .withTimestampAssigner((tk, ts) -> tk.closeTime)
-          .withIdleness(Duration.ofSeconds(5)) // Mark idle sources so watermark can progress
+          .<TradeKline>forMonotonousTimestamps() // Assumes that timestamps are always increasing (works for trade data)
+          .withTimestampAssigner((tk, ts) -> tk.closeTime) // Extracts the event timestamp (tk.closeTime) from each TradeKline
+          .withIdleness(Duration.ofSeconds(5)) // Mark a source as idle after 5 seconds of no data, so watermark can progress in parallel sources
       )
-      .keyBy(tk -> tk.symbol) // Group the streams by "tk.symbol" eg. BNBBTC
-      .window(TumblingEventTimeWindows.of(Time.minutes(1))) // Create non-overlapping windows of 1 minute of event time
+      .keyBy(tk -> tk.symbol) // Group the streams (each group has their own window) by "tk.symbol" eg. BNBBTC
+      // Create non-overlapping windows of 1 minute of event time
+      // - A new window starts every minute based on event time a.k.a closeTime (10:01:00–10:02:00, 10:02:00–10:03:00)
+      .window(TumblingEventTimeWindows.of(Time.minutes(1)))
+      // Compute average close price for a window
       .aggregate(
         new AggregateFunction<TradeKline, Tuple2<Double, Integer>, Double>() {
+          // Initialise the accumulator
+          // Tuple2<sum of close prices, count of trades>
           public Tuple2<Double, Integer> createAccumulator() {
             return Tuple2.of(0.0, 0);
           }
 
+          // For each tradeKline in window
+          // - add its close price to the accumulator
+          // - increment the count of trades
           public Tuple2<Double, Integer> add(
             TradeKline value,
             Tuple2<Double, Integer> acc
@@ -88,10 +105,12 @@ public class BinanceKafkaConsumerJob {
             return Tuple2.of(acc.f0 + value.close, acc.f1 + 1);
           }
 
+          // At the end, get average
           public Double getResult(Tuple2<Double, Integer> acc) {
             return acc.f1 == 0 ? 0.0 : acc.f0 / acc.f1;
           }
 
+          // Merges two accumulators (session/custom windows, or parallelism)
           public Tuple2<Double, Integer> merge(
             Tuple2<Double, Integer> a,
             Tuple2<Double, Integer> b
@@ -99,19 +118,20 @@ public class BinanceKafkaConsumerJob {
             return Tuple2.of(a.f0 + b.f0, a.f1 + b.f1);
           }
         },
+        // We manipulate the output from the above function into a KlineAgg object
         new ProcessWindowFunction<Double, KlineAgg, String, TimeWindow>() {
           @Override
           public void process(
-            String key,
-            Context context,
-            Iterable<Double> elements,
-            Collector<KlineAgg> out
+            String key, // Group key (symbol, e.g. BNBBTC)
+            Context context, // We can access window start and end
+            Iterable<Double> elements, // The aggregated average from the previous step
+            Collector<KlineAgg> out // The result
           ) {
             Double avgClose = elements.iterator().next();
             long windowStart = context.window().getStart();
             out.collect(new KlineAgg(key, windowStart / 1000, avgClose));
           }
-        }
+        } // OUTPUT: DataStream<KlineAgg> with fields: symbol, windowStart (in seconds), avgClose
       );
 
     // Use the modern JdbcSink.sink
@@ -138,6 +158,6 @@ public class BinanceKafkaConsumerJob {
       )
     );
 
-    env.setParallelism(1).execute("Flink Kafka Consumer - Binance");
+    streamEnv.setParallelism(1).execute("Flink Kafka Consumer - Binance");
   }
 }
