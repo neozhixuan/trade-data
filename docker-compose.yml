@@ -1,5 +1,15 @@
 # version is now obsolete
 services:
+  # The Golang service cannot reach the other services through localhost anymore
+  # - refer to the services by their service name
+  data-ingest:
+    build:
+      context: ./data-ingest
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BROKER: kafka:9092
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     environment:
@@ -14,7 +24,8 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092 # Bootstrap server
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092 # Binds Kafka to all network interfaces (0.0.0.0) — it listens on that port
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092 # Tells clients what hostname/port to connect to — use kafka:9092 for Docker DNS
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   clickhouse:

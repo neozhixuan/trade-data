@@ -10,13 +10,17 @@ This project outlines a test pipeline to read live trade data from Binance WebSo
 Java 11 support
 
 ```sh
+export JAVA_HOME=/c/'Program Files'/java/jdk-11.0.13/ && export PATH=$JAVA_HOME/bin:$PATH
+
 java -version  # should now show Java 11
 ```
 
 Start docker services for Zookeeper and Kafka
 
 ```sh
-docker-compose up -d # Run containers in detached mode
+chmod +x ./start.sh
+
+bash start.sh
 ```
 
 Start the Binance WebSocket client that will ingest the data into a Kafka broker.
@@ -56,31 +60,11 @@ Expected logs:
   - Flink assigns subtasks (small independent workers) to run parts of the operator logic in parallel.
   - If the operator has a parallelism of 12, you’ll see log lines from subtasks 0>, 1>, ..., 11>.
 
-ClickHouse setup
+Query from clickhouse
 
 ```sh
 docker exec -it clickhouse clickhouse-client --password default
 ```
-
-First time setup
-
-```sh
--- Create database if it doesn't exist
-CREATE DATABASE IF NOT EXISTS trades;
-
--- Use the database
-USE trades;
-
--- Create the kline_agg table
-CREATE TABLE kline_agg (
-    symbol String,
-    window_start DateTime,
-    avg_close Float64
-) ENGINE = MergeTree()
-ORDER BY (symbol, window_start);
-```
-
-Query
 
 ```sql
 select * from trades.kline_agg

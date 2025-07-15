@@ -4,9 +4,11 @@ import (
 	"data-ingest/kafkaWriter"
 	"data-ingest/websocketClient"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/segmentio/kafka-go"
 )
@@ -22,11 +24,15 @@ const (
 )
 
 var (
-	kafkaBrokers  = []string{"localhost:9092"}
+	kafkaBrokers  []string
 	kafkaBalancer = &kafka.LeastBytes{}
 )
 
 func main() {
+	// Env var from docker/env
+	broker := os.Getenv("KAFKA_BROKER")
+	kafkaBrokers = []string{broker}
+
 	// Set up logger with file name and line number
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
@@ -56,6 +62,8 @@ func main() {
 	go websocketClient.ReadMessages(wssClient, tradeInfoChannel)
 
 	// Create Kafka writer
+	waitForKafka(broker, 10)
+
 	kafkaWriterObj := kafkaWriter.NewKafkaWriter()
 	kafkaWriterInstance := kafka.NewWriter(kafka.WriterConfig{
 		Brokers:  kafkaBrokers,
@@ -71,4 +79,19 @@ func main() {
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM) // os.Interrupt triggers on Ctrl+C; syscall.SIGTERM on termination
 	<-sigChan
 	log.Println("[main] Interrupt signal detected, shutting down...")
+}
+
+func waitForKafka(broker string, maxRetries int) {
+	for i := 0; i < maxRetries; i++ {
+		// Dial the Kafka broker via TCP every 2 seconds for X retries max
+		conn, err := net.DialTimeout("tcp", broker, 2*time.Second)
+		if err == nil {
+			conn.Close()
+			log.Println("[Kafka Ready]")
+			return
+		}
+		log.Printf("[Kafka Wait] Retrying... (%d/%d)\n", i+1, maxRetries)
+		time.Sleep(2 * time.Second)
+	}
+	log.Fatalf("Kafka not available after %d retries", maxRetries)
 }
