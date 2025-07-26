@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Start all services in detached mode
-docker compose up -d
+# Start supporting services in detached mode
+docker compose up --build -d zookeeper kafka clickhouse
 
 # Wait for Kafka and ClickHouse to be ready
-echo "Waiting for Kafka and ClickHouse to start..."
-sleep 10
+echo "Waiting for Kafka and Zookeeper and Clickhouse to start..."
+sleep 8
 
 # Create Kafka topic (if not exists)
 docker compose exec kafka kafka-topics \
@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS trades.kline_agg (
 ) ENGINE = MergeTree()
 ORDER BY (symbol, window_start);
 "
+
+
+# Start the rest of the services
+docker compose up --build -d data-ingest
+
 
 echo "All services started and initialized."
 

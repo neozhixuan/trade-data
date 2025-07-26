@@ -26,6 +26,7 @@ func (c *websocketClient) NewWebsocketConnection(binanceInfo BinanceInfo) (*webs
 	log.Printf("Connecting to Binance WebSocket at %s\n", binanceURL.String())
 	websocketConn, _, err := websocket.DefaultDialer.Dial(binanceURL.String(), nil)
 	if err != nil {
+		// NOTE: log.Fatalf will terminate the program, so we return nil and err instead
 		log.Fatalf("[NewWebsocketConnection] Failed to connect to Binance WebSocket due to error: %s", err.Error())
 		return nil, err
 	}
@@ -52,6 +53,21 @@ func (c *websocketClient) SubscribeToStream(conn *websocket.Conn, streamNames []
 		return err
 	}
 	log.Printf("[SubscribeToStream] Successfully subscribed to streams: %v", streamNames)
+
+	return nil
+}
+
+func (c *websocketClient) UnsubscribeFromStream(conn *websocket.Conn, streamNames []string) error {
+	subscribe := map[string]interface{}{
+		"method": "UNSUBSCRIBE",
+		"params": streamNames,
+		"id":     1,
+	}
+	if err := conn.WriteJSON(subscribe); err != nil {
+		log.Fatalf("[UnsubscribeFromStream] Failed to unsubscribe from streams, err: %s", err.Error())
+		return err
+	}
+	log.Printf("[UnsubscribeFromStream] Successfully unsubscribed from streams: %v", streamNames)
 
 	return nil
 }

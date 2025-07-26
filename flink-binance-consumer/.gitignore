@@ -1,0 +1,33 @@
+# NOTE: gitignore file does not have to be in the root; just wherever you need it.
+# Java build output
+target/
+*.class
+
+# Maven
+.mvn/
+.settings/
+dependency-reduced-pom.xml
+release.properties
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Eclipse
+.project
+.classpath
+.cproject
+.settings/
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

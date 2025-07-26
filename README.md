@@ -8,6 +8,9 @@ Flink Windowed Aggregation
 
 <img width="887" height="563" alt="image" src="https://github.com/user-attachments/assets/fa94940f-92de-4488-98c5-b82b56d21ec2" />
 
+## References
+
+1. Binance Spot API Documentation: [Link](https://github.com/binance/binance-spot-api-docs/blob/master/web-socket-streams.md)
 
 ## Setup
 
@@ -27,7 +30,7 @@ chmod +x ./start.sh
 bash start.sh
 ```
 
-Start the Binance WebSocket client that will ingest the data into a Kafka broker.
+[If you did not use docker compose] Start the Binance WebSocket client that will ingest the data into a Kafka broker.
 
 ```sh
 cd data-ingest
@@ -47,9 +50,11 @@ Expected logs:
 2025/07/13 17:01:31 kafkaWriter.go:29: [WriteMessageFromStream] Successfully wrote message to Kafka: {"e":"kline","E":1752397290016,"s":"BNBBTC","k":{"t":1752397260000,"T":1752397319999,"s":"BNBBTC","i":"1m","f":273280640,"L":273280663,"o":"0.00585100","c":"0.00585000","h":"0.00585100","l":"0.00584900","v":"5.68800000","n":24,"x":false,"q":"0.03327391","V":"1.25900000","Q":"0.00736515","B":"0"}}
 ```
 
-Start the Flink client which will act as the consumer in the Kafka topic.
+Start the Flink client using Maven - itwill act as the consumer in the Kafka topic.
 
 ```sh
+cd flink-binance-consumer/
+
 mvn clean compile exec:java
 ```
 
@@ -64,7 +69,7 @@ Expected logs:
   - Flink assigns subtasks (small independent workers) to run parts of the operator logic in parallel.
   - If the operator has a parallelism of 12, you’ll see log lines from subtasks 0>, 1>, ..., 11>.
 
-Query from clickhouse
+If you used Docker, you can query from Clickhouse container
 
 ```sh
 docker exec -it clickhouse clickhouse-client --password default
@@ -85,3 +90,8 @@ Query id: c6241df8-91aa-4ddb-8e88-10c35c6add6a
    └────────┴─────────────────────┴──────────────────────┘
    3 rows in set. Elapsed: 0.004 sec.
 ```
+
+## Todos
+
+1. Figure out the mergetree and orderby in clickhouse
+2. Implement multiple symbol storage and practice SQL

@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	binanceScheme     = "wss"
-	binanceHost       = "stream.binance.com:9443"
-	binancePath       = "/ws/bnbbtc@trade"
-	tradeChannelLimit = 100
+	binanceScheme      = "wss"
+	binanceHost        = "stream.binance.com:9443"
+	binancePath        = "/ws/bnbbtc@trade" // Despite using bnbbtc stream, we can also subscribe to other streams
+	binanceTradeStream = "bnbbtc@kline_1m"
+	tradeChannelLimit  = 1000
 
 	kafkaTopic    = "binance.kline"
 	kafkaTopicKey = "bnbbtc"
@@ -49,9 +50,10 @@ func main() {
 	}
 	defer websocketClient.CloseConnection(wssClient)
 
-	// Subscribe to trade streams
-	streamNames := []string{"bnbbtc@kline_1m"}
+	// Subscribe to trade streams within the websocket connection
+	streamNames := []string{binanceTradeStream}
 	websocketClient.SubscribeToStream(wssClient, streamNames)
+	defer websocketClient.UnsubscribeFromStream(wssClient, streamNames)
 
 	// Start a bounded channel to receive trade info
 	// - If we exceed tradeChannelLimit, the sender will be blocked unless we use a select-case-default to drop messages
@@ -63,7 +65,6 @@ func main() {
 
 	// Create Kafka writer
 	waitForKafka(broker, 10)
-
 	kafkaWriterObj := kafkaWriter.NewKafkaWriter()
 	kafkaWriterInstance := kafka.NewWriter(kafka.WriterConfig{
 		Brokers:  kafkaBrokers,
@@ -72,7 +73,9 @@ func main() {
 	})
 	defer kafkaWriterInstance.Close()
 
-	go kafkaWriterObj.WriteMessageFromStream(kafkaWriterInstance, tradeInfoChannel, kafkaTopicKey)
+	go func() {
+		kafkaWriterObj.WriteMessageFromStream(kafkaWriterInstance, tradeInfoChannel, kafkaTopicKey)
+	}()
 
 	// Wait for interrupt signal (program exited) to gracefully shutdown and call all close functions
 	sigChan := make(chan os.Signal, 1)
