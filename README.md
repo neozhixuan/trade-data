@@ -95,7 +95,111 @@ Query id: c6241df8-91aa-4ddb-8e88-10c35c6add6a
 
 ## Database Queries
 
-Join with data w/ symbols
+The tables were created as such
+
+```sql
+-- ORDER BY affects how data is stored, which boosts:
+-- - Indexing (sparse primary index → faster lookups)
+-- - Compression (similar values are stored adjacently)
+
+CREATE TABLE IF NOT EXISTS trades.kline_agg (
+    symbol String,
+    window_start DateTime,
+    avg_close Float64
+) ENGINE = MergeTree()
+ORDER BY (symbol, window_start);
+
+CREATE TABLE IF NOT EXISTS trades.kline_events (
+    event_type String,        -- e
+    event_time DateTime,      -- E
+    symbol String             -- s
+) ENGINE = MergeTree()
+PARTITION BY toYYYYMM(event_time) -- ClickHouse stores data separately for each month (202407, 202408, etc.).
+ORDER BY (symbol, event_time);
+
+CREATE TABLE IF NOT EXISTS trades.kline_data (
+    symbol String,                -- k.s
+    interval String,              -- k.i
+    open_time DateTime,           -- k.t
+    close_time DateTime,          -- k.T
+    first_trade_id UInt64,        -- k.f
+    last_trade_id UInt64,         -- k.L
+    open Float64,                 -- k.o
+    close Float64,                -- k.c
+    high Float64,                 -- k.h
+    low Float64,                  -- k.l
+    volume Float64,               -- k.v
+    trade_count UInt32,           -- k.n
+    is_closed UInt8,              -- k.x
+    quote_asset_volume Float64,   -- k.q
+    taker_buy_base_volume Float64,  -- k.V
+    taker_buy_quote_volume Float64, -- k.Q
+    event_time DateTime           -- redundant but useful for joining back
+)
+ENGINE = MergeTree()
+PARTITION BY toYYYYMM(open_time) -- ClickHouse stores data separately for each month (202407, 202408, etc.).
+ORDER BY (symbol, interval, open_time);
+
+CREATE TABLE trades.symbols (
+    symbol String PRIMARY KEY,
+    base_asset String,
+    quote_asset String,
+    asset_class String, -- e.g., crypto, stablecoin
+    launched Date
+) ENGINE = MergeTree()
+ORDER BY symbol;
+```
+
+```mermaid
+erDiagram
+    kline_data ||--|| symbols : has
+    kline_agg ||--|| symbols : aggregates
+    kline_events ||--|| symbols : triggers
+
+    symbols {
+        String symbol PK
+        String base_asset
+        String quote_asset
+        String asset_class
+        Date launched
+    }
+
+    kline_data {
+        String symbol FK
+        String interval
+        DateTime open_time
+        DateTime close_time
+        UInt64 first_trade_id
+        UInt64 last_trade_id
+        Float64 open
+        Float64 close
+        Float64 high
+        Float64 low
+        Float64 volume
+        UInt32 trade_count
+        UInt8 is_closed
+        Float64 quote_asset_volume
+        Float64 taker_buy_base_volume
+        Float64 taker_buy_quote_volume
+        DateTime event_time
+    }
+
+    kline_agg {
+        String symbol FK
+        DateTime window_start
+        Float64 avg_close
+    }
+
+    kline_events {
+        String symbol FK
+        String event_type
+        DateTime event_time
+    }
+```
+
+Aggregates average volume for symbols with asset_class = 'crypto'.
+
+- Joins on `symbol`, which is indexed on both tables
 
 ```sql
 SELECT kd.symbol, avg(kd.volume)
@@ -105,41 +209,48 @@ WHERE s.asset_class = 'crypto'
 GROUP BY kd.symbol;
 ```
 
-Use windows to check moving average close prices
+5-row moving average of close prices for BTCUSDT
+
+- Utilise clickhouse window function
+- The filter `symbol = 'BTCUSDT'` restricts data to one partition, to improve ORDER BY
+- ORDER BY `open_time` which is indexed
 
 ```sql
 SELECT
   symbol,
   open_time,
   close,
-  avg(close) OVER (
+  avg(close) OVER ( -- sql window
     PARTITION BY symbol
     ORDER BY open_time
     ROWS BETWEEN 4 PRECEDING AND CURRENT ROW
   ) AS ma5
 FROM kline_data
-WHERE symbol = 'BTCUSDT'
+WHERE symbol = 'BTCUSDT' -- sparse index filtering (TODO)
 ORDER BY open_time;
 ```
 
-Not working: force partition pruning
+Count the number of kline_data rows between two months
+
+- NOTE: ClickHouse optimisation; Since table has partition on months (`PARTITION BY toYYYYMM(open_time)`), we can prune unneeded dates by specifying the months we want.
 
 ```sql
--- Forces pruning via PARTITION BY toYYYYMM(open_time)
 SELECT count(*)
 FROM kline_data
-WHERE open_time >= '2025-07-26' AND open_time < '2024-07-27';
+WHERE open_time >= toDateTime('2024-07-01') AND open_time < toDateTime('2025-09-01')
 ```
 
-Check lag/lead for candle comparisons
+Compute the previous close and delta for each candle for BTCUSDT (TODO)
+
+- Use window function and filtering for efficiency
 
 ```sql
 SELECT
   symbol,
   open_time,
   close,
-  lag(close, 1) OVER (PARTITION BY symbol ORDER BY open_time) AS prev_close,
-  close - lag(close, 1) OVER (PARTITION BY symbol ORDER BY open_time) AS price_delta
+  lag(close, 1) OVER (PARTITION BY symbol ORDER BY open_time) AS prev_close, -- sql optimisation (TODO)
+  close - lag(close, 1) OVER (PARTITION BY symbol ORDER BY open_time) AS price_delta -- sql optimisation (TODO)
 FROM kline_data
 WHERE symbol = 'BTCUSDT'
 ORDER BY open_time;
@@ -155,7 +266,7 @@ SELECT
   d.open_time,
   d.close
 FROM kline_events e
-JOIN kline_data d
+JOIN kline_data d -- sql range joins (TODO)
   ON e.symbol = d.symbol AND d.open_time <= e.event_time AND d.close_time > e.event_time
 WHERE e.event_type = 'kline';
 ```
