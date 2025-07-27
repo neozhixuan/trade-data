@@ -1,5 +1,17 @@
 #!/bin/bash
 
+# Build the flink java project
+cd flink-binance-consumer
+
+ # This cleans the target direcory, compiles the project, and packages it into a JAR file
+ # - this is necessary as we need to build a Fat JAR file that includes all dependencies
+mvn clean compile package
+if [ $? -ne 0 ]; then # Check if the previous command was successful TODO
+  echo "Maven build failed. Exiting."
+  exit 1
+fi
+cd ..
+
 # Start supporting services in detached mode
 docker compose up --build -d zookeeper kafka clickhouse
 
@@ -27,9 +39,8 @@ CREATE TABLE IF NOT EXISTS trades.kline_agg (
 ORDER BY (symbol, window_start);
 "
 
-
 # Start the rest of the services
-docker compose up --build -d data-ingest
+docker compose up --build -d data-ingest flink-consumer
 
 
 echo "All services started and initialized."

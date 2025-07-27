@@ -1,6 +1,6 @@
 # NOTE: gitignore file does not have to be in the root; just wherever you need it.
 # Java build output
-target/
+target/*
 *.class
 
 # Maven

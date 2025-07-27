@@ -4,11 +4,23 @@ services:
   # - refer to the services by their service name
   data-ingest:
     build:
-      context: ./data-ingest
+      context: ./data-ingest # Path to the directory *containing* the Dockerfile
     depends_on:
       - kafka
     environment:
       KAFKA_BROKER: kafka:9092
+
+  flink-consumer:
+    build:
+      context: ./flink-binance-consumer
+    depends_on:
+      - kafka
+      - clickhouse
+    environment:
+      KAFKA_BROKER: kafka:9092
+      CLICKHOUSE_URL: jdbc:clickhouse://clickhouse:8123/trades # TODO: use env var for this
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: default
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0

@@ -33,7 +33,7 @@ public class BinanceKafkaConsumerJob {
 
     // Set up Kafka consumer properties
     Properties props = new Properties();
-    props.setProperty("bootstrap.servers", "localhost:9092");
+    props.setProperty("bootstrap.servers", "kafka:9092");
     props.setProperty("group.id", "flink-binance-consumer");
 
     // Create a Flink Kafka consumer to read from the "binance.kline" topic
@@ -150,7 +150,7 @@ public class BinanceKafkaConsumerJob {
           .withMaxRetries(3)
           .build(),
         new JdbcConnectionOptions.JdbcConnectionOptionsBuilder()
-          .withUrl("jdbc:clickhouse://localhost:8123/trades")
+          .withUrl("jdbc:clickhouse://clickhouse:8123/trades")
           .withDriverName("com.clickhouse.jdbc.ClickHouseDriver")
           .withUsername("default")
           .withPassword("default")
