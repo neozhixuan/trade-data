@@ -76,7 +76,9 @@ docker exec -it clickhouse clickhouse-client --password default
 ```
 
 ```sql
-select * from trades.kline_agg
+use trades
+
+select * from kline_agg
 ```
 
 Result
@@ -91,7 +93,102 @@ Query id: c6241df8-91aa-4ddb-8e88-10c35c6add6a
    3 rows in set. Elapsed: 0.004 sec.
 ```
 
+## Database Queries
+
+Join with data w/ symbols
+
+```sql
+SELECT kd.symbol, avg(kd.volume)
+FROM kline_data kd
+JOIN symbols s ON kd.symbol = s.symbol
+WHERE s.asset_class = 'crypto'
+GROUP BY kd.symbol;
+```
+
+Use windows to check moving average close prices
+
+```sql
+SELECT
+  symbol,
+  open_time,
+  close,
+  avg(close) OVER (
+    PARTITION BY symbol
+    ORDER BY open_time
+    ROWS BETWEEN 4 PRECEDING AND CURRENT ROW
+  ) AS ma5
+FROM kline_data
+WHERE symbol = 'BTCUSDT'
+ORDER BY open_time;
+```
+
+Not working: force partition pruning
+
+```sql
+-- Forces pruning via PARTITION BY toYYYYMM(open_time)
+SELECT count(*)
+FROM kline_data
+WHERE open_time >= '2025-07-26' AND open_time < '2024-07-27';
+```
+
+Check lag/lead for candle comparisons
+
+```sql
+SELECT
+  symbol,
+  open_time,
+  close,
+  lag(close, 1) OVER (PARTITION BY symbol ORDER BY open_time) AS prev_close,
+  close - lag(close, 1) OVER (PARTITION BY symbol ORDER BY open_time) AS price_delta
+FROM kline_data
+WHERE symbol = 'BTCUSDT'
+ORDER BY open_time;
+```
+
+Join kline event with kline data, to see each kline data in each window
+
+```sql
+-- Correlate events with candle data
+SELECT
+  e.symbol,
+  e.event_time,
+  d.open_time,
+  d.close
+FROM kline_events e
+JOIN kline_data d
+  ON e.symbol = d.symbol AND d.open_time <= e.event_time AND d.close_time > e.event_time
+WHERE e.event_type = 'kline';
+```
+
+## Optimisation
+
+We can practice SQL command optimisation below using EXPLAIN
+
+```sql
+EXPLAIN
+SELECT
+    kd.symbol,
+    avg(kd.volume)
+FROM kline_data AS kd
+INNER JOIN symbols AS s ON kd.symbol = s.symbol
+WHERE s.asset_class = 'crypto'
+GROUP BY kd.symbol
+
+Query id: 0f8daf8c-07d0-4f68-8c06-3d3fd41309ee
+
+   ┌─explain──────────────────────────────────────────────────────────┐
+1. │ Expression ((Project names + Projection))                        │
+2. │   Aggregating                                                    │
+3. │     Expression ((Before GROUP BY + ))                            │
+4. │       Expression                                                 │
+5. │         Join                                                     │
+6. │           Expression (Change column names to column identifiers) │
+7. │             ReadFromMergeTree (trades.kline_data)                │
+8. │           Expression                                             │
+9. │             ReadFromMergeTree (trades.symbols)                   │
+   └──────────────────────────────────────────────────────────────────┘
+```
+
 ## Todos
 
 1. Figure out the mergetree and orderby in clickhouse
-2. Implement multiple symbol storage and practice SQL

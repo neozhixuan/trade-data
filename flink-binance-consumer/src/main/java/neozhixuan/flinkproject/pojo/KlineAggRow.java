@@ -1,14 +1,14 @@
 package main.java.neozhixuan.flinkproject.pojo;
 
-public class KlineAgg {
+public class KlineAggRow {
 
   public String symbol;
   public long windowStart;
   public double avgClose;
 
-  public KlineAgg() {}
+  public KlineAggRow() {}
 
-  public KlineAgg(String symbol, long windowStart, double avgClose) {
+  public KlineAggRow(String symbol, long windowStart, double avgClose) {
     this.symbol = symbol;
     this.windowStart = windowStart;
     this.avgClose = avgClose;

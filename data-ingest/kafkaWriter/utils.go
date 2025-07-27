@@ -7,3 +7,8 @@ type KafkaInfo struct {
 	KafkaTopic    string
 	KafkaBalancer kafka.Balancer
 }
+
+type KlineMessage struct {
+	Symbol string `json:"symbol"`
+	// Add more fields as needed
+}
