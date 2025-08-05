@@ -25,8 +25,8 @@ docker compose exec kafka kafka-topics \
   --create \
   --if-not-exists \
   --topic binance.kline \
-  --partitions 3 \
-  --replication-factor 1
+  --partitions 2 \
+  --replication-factor 2
 
 # Create ClickHouse table (if not exists)
 docker compose exec clickhouse clickhouse-client --password default --query "

@@ -301,6 +301,6 @@ public class BinanceKafkaConsumerJob {
       )
     );
 
-    streamEnv.setParallelism(1).execute("Flink Kafka Consumer - Binance");
+    streamEnv.setParallelism(2).execute("Flink Kafka Consumer - Binance");
   }
 }

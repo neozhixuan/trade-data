@@ -75,6 +75,152 @@ Query id: c6241df8-91aa-4ddb-8e88-10c35c6add6a
    3 rows in set. Elapsed: 0.004 sec.
 ```
 
+## Message Queue
+
+Kafka is a distributed message queue, that acts like a durable commit log.
+
+1. Producers write data to a Kafka topic
+2. Kafka appends each message **sequentially** to the disk - each message is stored in a partition.
+
+- Each partition is like a log file, messages are written to the end.
+
+3. Each consumer reads at their own pace
+
+- Consumers track their own offsets, so Kafka doesn't need to know which consumer has read what.
+
+4. Kafka retains each message for a period (configurable), whether or not it has been read
+
+### Kafka Topic
+
+A topic, in code, is just logic for separating messages into categories.
+
+- Within each topic, there can be N partitions
+- Each partition lives on one leader broker
+
+```sh
+Topic: "kline-topic"
+└── Partition 0 (log file on disk)
+└── Partition 1 (log file on disk)
+└── Partition 2 (log file on disk)
+```
+
+Write
+
+- Kafka's partitioner chooses the partition to write on (round robin by default / hash the keys / manual selection)
+
+Read
+
+- Consumers read from a partition.
+- Each consumer in a consumer group is assigned a partition.
+  - Each partition can only be read by one consumer in that group at once!
+
+### Kafka Replication
+
+A topic that has 3 partitions and replication factor of 2
+
+- Stores each partition's logs on 2 separate brokers
+
+```sh
+Partition 0:
+   Leader: Broker 1
+   Follower: Broker 2
+
+Partition 1:
+   Leader: Broker 2
+   Follower: Broker 3
+
+Partition 2:
+   Leader: Broker 3
+   Follower: Broker 1
+```
+
+Sequence of events
+
+1. Producers writes a message to the partition's leader broker
+2. Leader broker replicates the message to the follower
+3. Follower sends an ACK to leader
+
+If leader crashes
+
+- Kafka uses In-Sync Replicas (ISR) set to choose a new leader
+  - If ISR is intact, there should be no data lost
+
+## Apache Flink
+
+Flink is a distributed stream processing engine, running on the JVM.
+
+Sequence of events
+
+1. Flink job is compiled to a JobGraph.
+2. JobGraph is compiled into an ExecutionGraph.
+3. ExecutionGraph is compiled into a TaskGraph.
+4. Tasks are distributed across TaskManagers, each running on a slot (a.k.a thread / operator instance).
+
+Components
+
+- The **JobManager** is the coordinator. Each cluster has 1 JobManager. It accepts and schedules Tasks.
+  - Contains the Checkpoint Coordinator, that coordinates state snapshots
+- The **TaskManager** is a JVM process, that runs **operators**. Each cluster has multiple TaskManagers.
+- **Source** and **Sink**
+
+### Parallelism
+
+In the project, we set parallelism = 2.
+
+```java
+stream
+  .map(...)
+  .keyBy(...)
+  .timeWindow(...)
+  .apply(...)
+  .addSink(...)
+```
+
+```sh
+# That translates to a logical chain of operators
+KafkaSource → Map → KeyBy → Window → Sink
+
+# 2 kafkasource operators are spawned.
+# Both read from 1 kafka partition each, in parallel
+```
+
+This is a typical Flink job. Each operator in this chain has a parallelism level of 2.
+
+- Flink creates 2 instances/subtasks of each operator (subtasks may be chained into a single task/thread, unless there's a shuffle (e.g. keyBy) this reduces overhead, as less tasks are assigned to each slot)
+- Each instance is scheduled across TaskManagers (a.k.a JVM **processes**)
+  - A TaskManager has 2 slots if 2 CPUs are allocated to it. Each slot is backed by a JVM thread.
+  - Each subtask runs on a slot.
+
+| Operator       | Subtask 0             | Subtask 1             |
+| -------------- | --------------------- | --------------------- |
+| KafkaSource    | reads partition 0     | reads partition 1     |
+| Map            | maps data from P0     | maps data from P1     |
+| KeyBy + Window | processes key-group 0 | processes key-group 1 |
+| Sink           | writes to ClickHouse  | writes to ClickHouse  |
+
+Flink may fuse some operators into a single task to run them in one thread for efficiency.
+
+- Chained: Source → Map
+- Not Chained: Map → keyBy (shuffle boundary)
+
+```sh
+TaskManager 1 (JVM)
+ ├── Thread 1: Kafka Source Subtask 0
+ ├── Thread 2: Map Subtask 0
+ ├── Thread 3: Window Subtask 0
+ └── Thread 4: Sink Subtask 0
+
+TaskManager 2 (JVM)
+ ├── Thread 1: Kafka Source Subtask 1
+ ├── Thread 2: Map Subtask 1
+ ...
+
+TaskManager 3 (JVM)
+ ├── Thread 1: Kafka Source Subtask 2
+ ├── Thread 2: Map Subtask 2
+ ...
+```
+
 ## Database Queries
 
 The tables were created as such
