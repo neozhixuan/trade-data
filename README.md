@@ -14,15 +14,9 @@ Flink Windowed Aggregation
 
 ## Setup
 
-Java 11 support
+NOTE: This project uses Java 11 due to some version compatibility issues.
 
-```sh
-export JAVA_HOME=/c/'Program Files'/java/jdk-11.0.13/ && export PATH=$JAVA_HOME/bin:$PATH
-
-java -version  # should now show Java 11
-```
-
-Start docker services for Zookeeper and Kafka
+Start docker services - data ingestion service, flink processor service, Kakfa + Zookeeper, ClickHouse.
 
 ```sh
 chmod +x ./start.sh
@@ -30,13 +24,7 @@ chmod +x ./start.sh
 bash start.sh
 ```
 
-[If you did not use docker compose] Start the Binance WebSocket client that will ingest the data into a Kafka broker.
-
-```sh
-cd data-ingest
-go run .
-cd ..
-```
+Our Golang microservice will ingest data from one WebSocket (Binance endpoint), and send data to one Kafka topic.
 
 Expected logs:
 
@@ -50,13 +38,7 @@ Expected logs:
 2025/07/13 17:01:31 kafkaWriter.go:29: [WriteMessageFromStream] Successfully wrote message to Kafka: {"e":"kline","E":1752397290016,"s":"BNBBTC","k":{"t":1752397260000,"T":1752397319999,"s":"BNBBTC","i":"1m","f":273280640,"L":273280663,"o":"0.00585100","c":"0.00585000","h":"0.00585100","l":"0.00584900","v":"5.68800000","n":24,"x":false,"q":"0.03327391","V":"1.25900000","Q":"0.00736515","B":"0"}}
 ```
 
-Start the Flink client using Maven - itwill act as the consumer in the Kafka topic.
-
-```sh
-cd flink-binance-consumer/
-
-mvn clean compile exec:java
-```
+Flink is run via Maven. It will process logs from Kafka quickly.
 
 Expected logs:
 
@@ -69,7 +51,7 @@ Expected logs:
   - Flink assigns subtasks (small independent workers) to run parts of the operator logic in parallel.
   - If the operator has a parallelism of 12, you’ll see log lines from subtasks 0>, 1>, ..., 11>.
 
-If you used Docker, you can query from Clickhouse container
+You can query from Clickhouse container
 
 ```sh
 docker exec -it clickhouse clickhouse-client --password default
@@ -197,7 +179,9 @@ erDiagram
     }
 ```
 
-Aggregates average volume for symbols with asset_class = 'crypto'.
+### Practice Queries
+
+Aggregate average volume for symbols with asset_class = 'crypto'.
 
 - Joins on `symbol`, which is indexed on both tables
 
@@ -240,40 +224,23 @@ FROM kline_data
 WHERE open_time >= toDateTime('2024-07-01') AND open_time < toDateTime('2025-09-01')
 ```
 
-Compute the previous close and delta for each candle for BTCUSDT (TODO)
-
-- Use window function and filtering for efficiency
-
-```sql
-SELECT
-  symbol,
-  open_time,
-  close,
-  lag(close, 1) OVER (PARTITION BY symbol ORDER BY open_time) AS prev_close, -- sql optimisation (TODO)
-  close - lag(close, 1) OVER (PARTITION BY symbol ORDER BY open_time) AS price_delta -- sql optimisation (TODO)
-FROM kline_data
-WHERE symbol = 'BTCUSDT'
-ORDER BY open_time;
-```
-
 Join kline event with kline data, to see each kline data in each window
 
 ```sql
--- Correlate events with candle data
 SELECT
   e.symbol,
   e.event_time,
   d.open_time,
   d.close
 FROM kline_events e
-JOIN kline_data d -- sql range joins (TODO)
+JOIN kline_data d -- sql range joins (inefficient)
   ON e.symbol = d.symbol AND d.open_time <= e.event_time AND d.close_time > e.event_time
 WHERE e.event_type = 'kline';
 ```
 
 ## Optimisation
 
-We can practice SQL command optimisation below using EXPLAIN
+We can see how ClickHouse does the execution plan, using EXPLAIN
 
 ```sql
 EXPLAIN
@@ -303,3 +270,17 @@ Query id: 0f8daf8c-07d0-4f68-8c06-3d3fd41309ee
 ## Todos
 
 1. Figure out the mergetree and orderby in clickhouse
+2. Figure this out
+
+```sql
+-- Compute the previous close and delta for each candle for BTCUSDT (TODO)
+SELECT
+  symbol,
+  open_time,
+  close,
+  lag(close, 1) OVER (PARTITION BY symbol ORDER BY open_time) AS prev_close, -- sql optimisation (TODO)
+  close - lag(close, 1) OVER (PARTITION BY symbol ORDER BY open_time) AS price_delta -- sql optimisation (TODO)
+FROM kline_data
+WHERE symbol = 'BTCUSDT'
+ORDER BY open_time;
+```
